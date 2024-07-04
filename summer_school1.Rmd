@@ -1,0 +1,232 @@
+---
+title: "summer_student_kmeans"
+output:
+  html_document: default
+  toc: true
+  theme: "cerulean"
+  pdf_document: default
+date: "2024-07-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+data(iris) #The dataset that we will be using for this exercise 
+library(ggplot2) #A package used to make plots
+library(ggstar)
+set.seed(5) #A random seed, used so that every "random" iteration is the same
+
+```
+
+# 1. What does our data look like?
+
+We will be trying to separate 3 types of flowers based on their characteristics: petal and sepal width and length
+
+```{r}
+
+head(iris) #The head() function prints the first few lines of a dataset 
+summary(iris) # The summary() function gives us some statistics on all the columns in the dataset
+
+```
+
+# 2. Functions
+
+In maths, a function takes an input, applies an operation and gives an output. For instance: 
+
+$$
+f(x) = x^2 + 2 
+$$
+
+takes an input number ($x$), applies an operation ($x^2+2$) and outputs a new value ($f(x)$).
+
+In computer science, functions work the exact same way, they have:
+<ul>
+ <li>An <b>input</b></li>
+ <li>Some code that will manipulate the input</li>
+ <li>An <b>output</b></li>
+</ul>
+
+
+In a k-means classifier, we have the following functions: 
+
+<ul>
+<li><em>euclidean_distance</em>: </li>
+<li><em>initialize_centroids</em>: </li>
+<li><em>assign_clusters</em>: </li>
+<li><em>update_centroids</em>: </li>
+<li><em>kmeans_algorithm</em>: </li>
+</ul>
+
+Let's have a look at how each one of them works:
+
+## Euclidean distance
+
+The Euclidean distance function returns the Euclidean distance between two points in a multidimensional space. For instance, in 2 dimensions the distance between points 1 and 2 is:
+
+$$
+d = \sqrt{(x_q - x_1)^2 + (y_2 - y_1)^2}
+$$
+
+in 3 dimensions:
+
+$$
+d = \sqrt{(x_2 - x_1)^2 + (y_2 - y_1)^2 + (z_2 - z_1)^2}
+$$
+
+and in n dimensions:
+
+$$
+d = \sqrt{ \sum_{i=1}^{n} (x_i - y_i)^2 }
+$$
+
+Inputs:
+<ul>
+<li> point1 - numerical vector of any dimension (x, y, z, ...) </li>
+<li> point2 - numerical vector of any dimension (x, y, z, ...) </li>
+</ul>
+
+Outputs: the Euclidean distance, a numebr representing the distance between the 2 points. 
+
+
+```{r}
+euclidean_distance <- function(point1, point2) {
+  distance = sqrt(sum((point1 - point2)^2))
+  return(distance)
+}
+```
+
+## Initialising the centroids 
+
+The centroids will be chosen randomly at first (k random points from the dataset), before being assigned by their mathematical definition for the enxt iterations. 
+Input: the dataset
+Output: k randomly selected rows from the dataset, which are now the centroids.
+
+```{r}
+
+initialize_centroids <- function(data, k) {
+  data[sample(1:nrow(data), k), ]
+}
+
+```
+
+
+## Assigning clusters 
+
+Each point in the dataset will be assigned to a cluster, according to the centroid they are closest to. 
+Inputs:
+<ul>
+<li> The dataset </li>
+<li> The coordinates of the centroids </li>
+</ul>
+
+Output: A list of numbers 1-k, representing the centroid that each datapoint belongs to.  
+
+```{r}
+
+assign_clusters <- function(data, centroids) {
+  clusters <- vector("numeric", nrow(data))
+  for (i in 1:nrow(data)) {
+    distances <- apply(centroids, 1, function(centroid) euclidean_distance(data[i, ], centroid))
+    clusters[i] <- which.min(distances)
+  }
+  clusters
+}
+
+```
+
+
+## Updating the centroids
+
+The non-random way to assign centroids, which we do after the 1st iteration, is thanks to their mathematical definition. The centroids are assigned as the point which is in the middle of all the points in a cluster. 
+Inputs:
+<ul>
+<li> The dataset </li>
+<li> The cluster assignments </li>
+</ul>
+
+Output: The coordinates for the new centroids
+
+```{r}
+
+update_centroids <- function(data, clusters, k) {
+  centroids <- matrix(NA, nrow = k, ncol = ncol(data))
+  for (i in 1:k) {
+    cluster_points <- data[clusters == i, ]
+    if (nrow(cluster_points) > 0) {
+      centroids[i, ] <- colMeans(cluster_points)
+    } else {
+      centroids[i, ] <- data[sample(1:nrow(data), 1), ]
+    }
+  }
+  centroids
+}
+
+```
+
+
+# Putting everything together: the k-means clustering algorithm
+
+Inputs:
+<ul>
+<li> The dataset </li>
+<li> k </li>
+<li> The tolerance: the minimum difference between the previous and next centroids for us to consider that the difference was big enough, and that we should iterate again </li>
+<li> The maximum number of iterations: the number of repeats after which we will stop reassigning centroids, even if the threshold has not been reached </li>
+</ul>
+
+Output: The clusters assigned to all the data points. 
+
+```{r}
+
+kmeans_algorithm <- function(data, k, max_iter = 100, tol = 1e-4) {
+
+  centroids <- initialize_centroids(data, k)
+  previous_centroids <- centroids
+  clusters <- NULL
+  
+  for (iteration in 1:max_iter) {
+    clusters <- assign_clusters(data, centroids)
+    centroids <- update_centroids(data, clusters, k)
+    
+    if (sum((centroids - previous_centroids)^2) < tol) {
+      cat("Converged in", iteration, "iterations\n")
+      break
+    }
+    previous_centroids <- centroids
+    centroids_df <- as.data.frame(centroids)
+    
+    plot <- ggplot() +
+      geom_point(iris, mapping=aes(Petal.Length, Petal.Width, color = as.factor(clusters), shape = Species), size = 3) +
+      geom_star(centroids_df, mapping=aes(V3, V4), color = "black", fill="red", size =5)+
+      labs(title = paste0("K-means Clustering on Iris Data, rep", iteration),
+           x = "Petal Length",
+           y = "Petal Width") +
+      theme_minimal()
+    print(plot)
+  }
+  
+  list(centroids = centroids, clusters = clusters)
+}
+
+```
+
+# Running everything
+
+```{r}
+
+iris_data <- iris[, -5] 
+
+k <- 3
+set.seed(5)
+result <- kmeans_algorithm(iris_data, k)
+print(result)
+
+```
+
+
+
+
+
